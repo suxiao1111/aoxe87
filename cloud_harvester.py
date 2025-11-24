@@ -178,36 +178,103 @@ class CloudHarvester:
                             const cb = document.querySelector('mat-checkbox:has-text("Accept terms of use") input') || document.querySelector('mat-checkbox:has-text("接受使用条款") input');
                             if(cb) cb.click();
                         """)
-                    
-                    await asyncio.sleep(1.0)
-                    
-                    # 3. Click Agree Button (Support EN: "Agree" and CN: "同意")
-                    agree_btn_selector = 'button:has-text("Agree"), button:has-text("同意")'
-                    
-                    if await self.page.is_visible(agree_btn_selector):
-                        print("   - Clicking Agree/同意 button...")
-                        # Wait for it to be enabled
-                        try:
-                            # 这里使用了 querySelector 查找第一个匹配项
-                            js_check_disabled = f"""
-                                (function() {{
-                                    const btn = document.querySelector('{agree_btn_selector}');
-                                    return btn && !btn.disabled;
-                                }})()
-                            """
-                            await self.page.wait_for_function(js_check_disabled, timeout=2000)
-                        except:
-                            print("   - Warning: Agree button might still be disabled.")
+                     async def perform_harvest(self):
+        print("🤖 Cloud Harvester: Attempting to trigger request...")
+        if not self.page:
+            return
 
-                        try:
-                            await self.page.click(agree_btn_selector, force=True, timeout=1000)
-                        except:
-                             # JS Click Fallback for all matching buttons
-                             await self.page.evaluate(f"document.querySelectorAll('button:has-text(\"Agree\"), button:has-text(\"同意\")').forEach(b => b.click())")
-                        
-                        await asyncio.sleep(2)
-            except Exception as e:
-                print(f"   - Terms check failed (ignorable): {e}")
+        try:
+            # ==========================================
+            # 1. 处理“使用条款”弹窗 (Priority Handling)
+            # ==========================================
+            
+            # 定义选择器 (支持中英文)
+            terms_checkbox = 'mat-checkbox:has-text("Accept terms of use"), mat-checkbox:has-text("接受使用条款")'
+            agree_btn = 'button:has-text("Agree"), button:has-text("同意")'
+            dialog_content = 'div.mat-mdc-dialog-content' # 遮挡屏幕的元凶
+
+            # 检测是否有弹窗内容
+            if await self.page.is_visible(dialog_content):
+                print("🧹 Cloud Harvester: Terms Dialog detected.")
+                
+                # 1.1 滚动到底部 (防止无法勾选)
+                try:
+                    await self.page.evaluate(f"document.querySelector('{dialog_content}').scrollTop = document.querySelector('{dialog_content}').scrollHeight")
+                    await asyncio.sleep(0.5)
+                except: 
+                    pass
+
+                # 1.2 勾选复选框
+                if await self.page.is_visible(terms_checkbox):
+                    print("   - Ticking checkbox...")
+                    # 尝试 JS 点击 (更稳定)
+                    await self.page.evaluate(f"""
+                        const cb = document.querySelector('mat-checkbox:has-text("Accept terms of use") input') || document.querySelector('mat-checkbox:has-text("接受使用条款") input');
+                        if(cb) cb.click();
+                    """)
+                    # 等待按钮变亮，这里很重要！
+                    print("   - Waiting for Agree button to enable...")
+                    await asyncio.sleep(2) 
+
+                # 1.3 点击同意按钮
+                if await self.page.is_visible(agree_btn):
+                    print("   - Clicking Agree...")
+                    # 使用 JS 强制点击，无视遮挡或禁用状态尝试触发
+                    await self.page.evaluate(f"""
+                        document.querySelectorAll('button:has-text("Agree"), button:has-text("同意")').forEach(b => {{
+                            b.disabled = false; # 强制移除禁用属性(如果还在)
+                            b.click();
+                        }})
+                    """)
+                    
+                    # 1.4 【关键】等待弹窗消失
+                    print("   - Waiting for dialog to vanish...")
+                    try:
+                        await self.page.wait_for_selector(dialog_content, state='hidden', timeout=5000)
+                        print("   - Dialog closed.")
+                    except:
+                        print("   ⚠️ Warning: Dialog might still be open, attempting to proceed...")
+
+            # 处理其他杂项弹窗 (Close/OK/Got it)
+            popup_selectors = [
+                'button[aria-label="Close"]', 'button[aria-label="Dismiss"]',
+                'button:has-text("Got it")', 'button:has-text("No thanks")',
+                'div[role="dialog"] button:has-text("Close")', 'div[role="dialog"] button:has-text("OK")'
+            ]
+            for selector in popup_selectors:
+                if await self.page.is_visible(selector):
+                    await self.page.click(selector)
+                    await asyncio.sleep(0.5)
+
+            # ==========================================
+            # 2. 发送文本 "Hello"
+            # ==========================================
+            
+            # 定位输入框
+            editor_selector = 'div[contenteditable="true"]'
+            
+            print("⏳ Cloud Harvester: Waiting for editor...")
+            # 等待输入框变为可见且可操作
+            await self.page.wait_for_selector(editor_selector, state="visible", timeout=10000)
+
+            # 点击输入框 (使用 force=True 强行点击，即使上方还有透明遮挡)
+            await self.page.click(editor_selector, force=True)
+            
+            # 清空并输入
+            await self.page.evaluate(f"document.querySelector('{editor_selector}').innerText = ''")
+            await self.page.fill(editor_selector, "Hello")
+            await asyncio.sleep(0.5)
+            
+            print("🚀 Cloud Harvester: Sending 'Hello'...")
+            await self.page.press(editor_selector, "Enter")
+            
+            # 等待捕获
+            await asyncio.sleep(5)
+            
+        except Exception as e:
+            print(f"❌ Cloud Harvester: Interaction failed: {e}")
+            # 如果失败，截图保存以便调试 (可选，如果运行在本地)
+            # await self.page.screenshot(path="error_screenshot.png")
 
             for selector in popup_selectors:
                 try:
