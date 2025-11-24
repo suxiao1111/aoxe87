@@ -1,3 +1,13 @@
+---
+title: Vertex AI Proxy
+emoji: 🚀
+colorFrom: blue
+colorTo: purple
+sdk: docker
+pinned: false
+app_port: 7860
+---
+
 # Vertex AI Headful Proxy
 
 这是一个基于 Python 和 浏览器脚本（Userscript）的 Vertex AI 代理工具。它允许你通过 OpenAI 兼容接口（API）调用 Google Vertex AI 的强大模型（如 Gemini 1.5 Pro, Gemini 2.0 Flash 等），利用浏览器已登录的会话进行认证。
