@@ -71,8 +71,9 @@ app_port: 7860
     1.  本项目已包含 `.github/workflows/sync_to_hub.yml` 文件。
     2.  你需要修改该文件最后一行，将 `YOUR_USERNAME/YOUR_SPACE_NAME` 替换为你实际的 Hugging Face Space 地址（例如 `my-user/vertex-proxy`）。
     3.  在 GitHub 仓库的 **Settings -> Secrets and variables -> Actions** 中，添加一个 Secret：
-        *   Name: `HF_TOKEN`
-        *   Value: 你的 Hugging Face Access Token (需有 Write 权限，在 HF 个人设置中获取)。
+        *   **Name**: `HF_TOKEN`
+        *   **Value**: 你的 Hugging Face Access Token。
+            *   *获取方法*: 登录 Hugging Face -> Settings -> Access Tokens -> Create new token -> **Type 选 Write** -> 复制 Token。
     4.  之后每次你 push 代码到 GitHub，它会自动同步部署到 Hugging Face Space。
 
     > **注意**: 不需要创建 GHCR 或 Docker Hub 镜像。Hugging Face 会根据仓库中的 `Dockerfile` 自动构建。

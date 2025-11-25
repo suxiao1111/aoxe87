@@ -215,24 +215,7 @@
         socket.onerror = (err) => console.error('WS Error', err);
     }
 
-    function findSiteKey() {
-        // Try to find SiteKey in DOM if not yet captured
-        if (window.__LAST_RECAPTCHA_SITEKEY__) return window.__LAST_RECAPTCHA_SITEKEY__;
-
-        // Method 1: Look for .g-recaptcha elements
-        const el = document.querySelector('.g-recaptcha, [data-sitekey]');
-        if (el && el.getAttribute('data-sitekey')) {
-            const key = el.getAttribute('data-sitekey');
-            logToScreen(`🔍 Found SiteKey in DOM: ${key}`);
-            window.__LAST_RECAPTCHA_SITEKEY__ = key;
-            return key;
-        }
-        
-        // Method 2: Look for common Google Cloud Console config objects
-        // This is harder as it's minified, but sometimes exposed.
-        
-        return null;
-    }
+    // Removed findSiteKey as it's no longer a hard dependency for refresh
 
     const TARGET_REFRESH_URL = 'https://console.cloud.google.com/vertex-ai/studio/multimodal?mode=prompt&model=gemini-2.5-flash-lite-preview-09-2025';
     const TARGET_MODEL_PARAM = 'model=gemini-2.5-flash-lite-preview-09-2025';
@@ -271,7 +254,7 @@
     }
 
     async function sendDummyMessage() {
-        const MAX_RETRIES = 5;
+        const MAX_RETRIES = 3; // Reduced retries for speed
         let attempts = 0;
 
         while (attempts < MAX_RETRIES) {
@@ -281,24 +264,23 @@
                 const editor = document.querySelector('div[contenteditable="true"]');
                 
                 if (!editor) {
-                    logToScreen(`⚠️ Editor not found (Attempt ${attempts}/${MAX_RETRIES}). Waiting...`);
-                    await new Promise(r => setTimeout(r, 1000));
+                    logToScreen(`⚠️ Editor not found (Attempt ${attempts})...`);
+                    await new Promise(r => setTimeout(r, 500)); // Reduced wait
                     continue;
                 }
 
-                logToScreen(`✍️ Entering "Hello" (Attempt ${attempts})...`);
+                logToScreen(`✍️ Sending "Hello"...`);
                 
                 editor.focus();
-                editor.click(); // Ensure focus
                 
                 // Set text content directly
-                editor.textContent = 'Hello'; // Use a simple, short message
+                editor.textContent = 'Hello';
                 
                 // Dispatch input events to trigger framework bindings
                 editor.dispatchEvent(new Event('input', { bubbles: true }));
-                await new Promise(r => setTimeout(r, 500));
+                await new Promise(r => setTimeout(r, 100)); // Fast wait
 
-                logToScreen('🚀 Pressing Enter to send...');
+                // Press Enter
                 const enterEvent = new KeyboardEvent('keydown', {
                     key: 'Enter',
                     code: 'Enter',
@@ -309,44 +291,46 @@
                 });
                 editor.dispatchEvent(enterEvent);
                 
-                // Check if text was cleared (success indicator)
-                await new Promise(r => setTimeout(r, 1000));
-                if (editor.textContent.trim() === '') {
-                    logToScreen('✅ Message sent successfully (Editor cleared).');
-                    return;
-                }
-                
-                // If Enter failed, try clicking send button once, but don't retry the whole block
-                logToScreen('⚠️ Editor not cleared. Trying send button...');
-                const sendBtn = document.querySelector('button[aria-label*="Send"]');
-                if (sendBtn && !sendBtn.disabled) {
-                    sendBtn.click();
-                    await new Promise(r => setTimeout(r, 1000));
+                // Fast polling to check if cleared
+                for (let i = 0; i < 20; i++) { // Poll for 2 seconds (20 * 100ms)
+                    await new Promise(r => setTimeout(r, 100));
                     if (editor.textContent.trim() === '') {
-                        logToScreen('✅ Message sent successfully (Send button cleared).');
+                        logToScreen('✅ Message sent (Editor cleared).');
                         return;
                     }
                 }
                 
-                // If we reach here, neither method worked in this attempt.
+                // If Enter failed, try clicking send button
+                logToScreen('⚠️ Trying send button...');
+                const sendBtn = document.querySelector('button[aria-label*="Send"]');
+                if (sendBtn && !sendBtn.disabled) {
+                    sendBtn.click();
+                    // Fast polling again
+                    for (let i = 0; i < 10; i++) {
+                        await new Promise(r => setTimeout(r, 100));
+                        if (editor.textContent.trim() === '') {
+                            logToScreen('✅ Message sent (Button clicked).');
+                            return;
+                        }
+                    }
+                }
                 
             } catch (e) {
-                logToScreen(`❌ Error in send attempt: ${e}`);
+                logToScreen(`❌ Error: ${e}`);
             }
             
-            await new Promise(r => setTimeout(r, 1000));
+            await new Promise(r => setTimeout(r, 500));
         }
-        throw "Failed to send message after multiple attempts";
+        throw "Failed to send message";
     }
 
     // --- Auto-Keepalive ---
-    // Once we have the SiteKey, refresh automatically every 4 minutes
+    // Refresh automatically every 10 minutes to keep session active
+    // (Backend also triggers refresh every 45 mins)
     setInterval(() => {
-        if (window.__LAST_RECAPTCHA_SITEKEY__) {
-            logToScreen('⏰ Auto-refreshing token (Keepalive)...');
-            attemptRefresh();
-        }
-    }, 4 * 60 * 1000); // 4 minutes
+        logToScreen('⏰ Auto-refreshing token (Keepalive)...');
+        attemptRefresh();
+    }, 10 * 60 * 1000); // 10 minutes
 
     function sendCredentials(data) {
         if (socket && socket.readyState === WebSocket.OPEN) {
@@ -358,7 +342,7 @@
         }
     }
 
-    // --- reCAPTCHA Hook ---
+    // --- reCAPTCHA Hook (Optional) ---
     function hookRecaptcha() {
         // Hook into window.grecaptcha to capture site keys and potentially trigger executions
         let originalExecute = null;
@@ -483,6 +467,12 @@
         intercept();
         hookRecaptcha();
         logToScreen('Harvester Armed. Please send a message in Vertex AI Studio.');
+        
+        // Initial Keepalive Trigger (after 5s) to ensure we have a token early
+        setTimeout(() => {
+             logToScreen('⏰ Initial Keepalive Check...');
+             attemptRefresh();
+        }, 5000);
 
         // Check for pending refresh
         if (sessionStorage.getItem(REFRESH_FLAG_KEY) === 'true') {

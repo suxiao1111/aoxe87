@@ -1022,7 +1022,6 @@ async def request_token_refresh():
         return
     
     print("🔌 Requesting refresh from WebSocket clients...")
-    
     message = json.dumps({"type": "refresh_token"})
     # Broadcast to all connected harvesters
     for ws in list(harvester_clients):
@@ -1034,6 +1033,25 @@ async def request_token_refresh():
             # but if send fails we might want to remove it.
             if ws in harvester_clients:
                 harvester_clients.remove(ws)
+
+async def keep_alive_loop():
+    """Background task to refresh credentials periodically (every 45 mins)."""
+    print("⏰ Keep-Alive Task Started")
+    while True:
+        try:
+            # Wait for 45 minutes (2700 seconds)
+            # We check every minute to see if we need to exit or if we should trigger early
+            for _ in range(45):
+                await asyncio.sleep(60)
+            
+            print("⏰ Keep-Alive: Triggering scheduled refresh...")
+            await request_token_refresh()
+            
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"⚠️ Keep-Alive Error: {e}")
+            await asyncio.sleep(60)
 
 async def main():
     config = uvicorn.Config(app, host="0.0.0.0", port=PORT, log_level="info")
@@ -1050,7 +1068,8 @@ async def main():
     # Make harvester global so admin endpoint can access it
     global harvester
     harvester = None
-       # Check if we should run the cloud harvester
+    
+    # Check if we should run the cloud harvester
     # 1. Explicitly enabled via ENABLE_AUTO_HARVEST
     # 2. Implicitly enabled if GOOGLE_COOKIES is set
     enable_cloud = os.environ.get("ENABLE_AUTO_HARVEST", "false").lower() == "true"
@@ -1068,6 +1087,9 @@ async def main():
             print("⚠️ Cloud Harvester dependencies (playwright) not found.")
     else:
         print("   👉 Please ensure the 'Harvester' userscript is running in your browser.")
+
+    # Start Keep-Alive Loop to proactively refresh tokens
+    asyncio.create_task(keep_alive_loop())
 
     await server.serve()
 
