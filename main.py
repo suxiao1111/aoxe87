@@ -219,7 +219,7 @@ class VertexAIClient:
         # Combine reasoning and content if reasoning exists
         final_content = full_content
         if reasoning_content:
-            final_content = f"**Reasoning:**\n{reasoning_content}\n\n**Response:**\n{full_content}"
+            final_content = f"<think>\n{reasoning_content}\n</think>\n\n{full_content}"
         
         # Workaround for clients that treat empty content as failure
         if not final_content:
