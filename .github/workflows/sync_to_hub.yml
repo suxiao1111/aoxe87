@@ -18,3 +18,4 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: git push --force https://kilo:$HF_TOKEN@huggingface.co/spaces/jiangzhiyan11/yan main
+        ``````bash
